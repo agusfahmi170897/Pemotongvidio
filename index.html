@@ -16,7 +16,7 @@ select{flex:1}input[type=number]{width:90px}
 button{font:inherit;border:0;border-radius:10px;padding:10px 16px;cursor:pointer}
 .b{background:var(--ac);color:var(--bt)}.b:disabled{opacity:.4}
 .s{background:var(--cd);color:var(--fg);border:1px solid var(--bd)}
-#go,#all{width:100%}
+#all{width:100%}#go{flex:1}.g{display:flex;gap:8px}.h{background:var(--cd);border-radius:12px;padding:10px 12px;margin-top:8px}.h summary{cursor:pointer;word-break:break-word}.h>div{margin:6px 0}.h>button{margin-top:8px}
 #st{margin:12px 0}
 .r{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--cd);border-radius:12px;padding:10px 12px;margin-top:8px}
 .r>div:first-child{flex:1 1 120px;min-width:0}.c{display:flex;gap:8px;flex:1 1 100%}textarea,input[type=text]{font:inherit;padding:8px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--fg);min-width:0;width:100%;box-sizing:border-box}.c textarea{flex:1;resize:vertical}
@@ -29,10 +29,13 @@ button{font:inherit;border:0;border-radius:10px;padding:10px 16px;cursor:pointer
 <div class="row"><select id="m"><option value="d">Durasi per part (menit)</option><option value="n">Jumlah part</option></select><input id="v" type="number" value="10" min="1" step="any"></div>
 <input id="cap" type="text" value="Part {n}/{total}" placeholder="Caption, mis. Judul Film - Part {n}/{total}"><div class="mu" style="margin:4px 0 8px">{n} = nomor part, {total} = jumlah part</div>
 <input id="tag" type="text" placeholder="Tagar, mis. #film #fyp #viral" style="margin-bottom:12px">
-<button id="go" class="b" disabled>Potong otomatis</button>
+<div class="g"><button id="go" class="b" disabled>Potong otomatis</button><button id="rs" class="s">Reset</button></div>
 <div id="st" class="mu"></div><div id="out"></div>
 <button id="all" class="b" hidden>Simpan semua</button>
 <p class="mu">Pemotongan dilakukan di titik keyframe, jadi durasi tiap part bisa meleset beberapa detik dari target.</p>
+<h2 style="font-size:1.1rem;margin:24px 0 4px;display:flex;justify-content:space-between;align-items:center">Riwayat <button id="hc" class="s" style="font-size:.85rem;padding:6px 10px" hidden>Hapus semua</button></h2>
+<div id="hist" class="mu"></div>
+<p class="mu">Riwayat hanya berisi catatan (nama video, waktu, durasi, caption) dan tersimpan di browser ini, bukan file videonya.</p>
 </main>
 <script>
 const $=i=>document.getElementById(i);
@@ -129,15 +132,34 @@ $('f').onchange=async e=>{
 $('go').onclick=async()=>{
  const m=$('m').value,v=+$('v').value;if(!(v>0))return;
  const P=Math.max(1,m=='d'?v*60:tot/Math.min(Math.round(v)||1,500));
- $('go').disabled=true;$('out').innerHTML='';$('all').hidden=true;parts=[];
+ $('go').disabled=true;$('out').innerHTML='';$('all').hidden=true;parts=[];$('rs').disabled=true;
  try{
-  const c=plan(P),N=c.length-1;
+  const c=plan(P),N=c.length-1,hp=[];
   for(let j=0;j<N;j++){
    $('st').textContent=`Membuat part ${j+1}/${N}…`;await new Promise(r=>setTimeout(r));
    const b=mkPart(slices(c,j)),nm=file.name.replace(/\.[^.]+$/,'')+'_part'+String(j+1).padStart(2,'0')+'.mp4';
-   parts.push([nm,b]);add(j,nm,b,V.dts[c[j]]/V.ts,V.dts[c[j+1]]/V.ts,[$('cap').value.split('{n}').join(j+1).split('{total}').join(N),$('tag').value].map(x=>x.trim()).filter(Boolean).join(String.fromCharCode(10)))}
-  $('st').textContent=`Selesai: ${N} part.`;$('all').hidden=false}
+   const t0=V.dts[c[j]]/V.ts,t1=V.dts[c[j+1]]/V.ts,cp=[$('cap').value.split('{n}').join(j+1).split('{total}').join(N),$('tag').value].map(x=>x.trim()).filter(Boolean).join(String.fromCharCode(10));
+   parts.push([nm,b]);hp.push({n:'Part '+(j+1),a:t0,b:t1,z:(b.size/1e6).toFixed(1),c:cp});add(j,nm,b,t0,t1,cp)}
+  $('st').textContent=`Selesai: ${N} part.`;$('all').hidden=false;H.unshift({nm:file.name,at:Date.now(),s:[m,v,$('cap').value,$('tag').value],ps:hp});H.length=Math.min(H.length,50);sv();rh()}
  catch(x){$('st').textContent='Gagal memotong video ini: '+(x&&x.message||'struktur file tidak didukung')}
- $('go').disabled=false};
+ $('go').disabled=false;$('rs').disabled=false};
 $('all').onclick=async()=>{for(const[n,b]of parts)await save(n,b)};
+const NL=String.fromCharCode(10);
+let H=[],hcT;try{H=JSON.parse(localStorage.getItem('pv_hist'))||[];if(!Array.isArray(H))H=[]}catch(e){H=[]}
+const sv=()=>{try{localStorage.setItem('pv_hist',JSON.stringify(H))}catch(e){}};
+function rh(){
+ const h=$('hist');h.innerHTML='';$('hc').hidden=!H.length;
+ if(!H.length){h.textContent='Belum ada riwayat.';return}
+ H.forEach((e,i)=>{
+  const dt=document.createElement('details'),sm=document.createElement('summary');dt.className='h';
+  sm.textContent=e.nm+' · '+e.ps.length+' part · '+new Date(e.at).toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'});dt.append(sm);
+  e.ps.forEach(p=>{const q=document.createElement('div');q.className='mu';q.style.whiteSpace='pre-wrap';q.textContent=p.n+' · '+fmt(p.a)+'–'+fmt(p.b)+' · '+p.z+' MB'+(p.c?NL+p.c:'');dt.append(q)});
+  const ru=document.createElement('button'),x=document.createElement('button');
+  ru.textContent='Pakai ulang';ru.className='s';ru.style.marginRight='8px';
+  ru.onclick=()=>{const[m,v,c,t]=e.s||[];if(m){$('m').value=m;$('v').value=v;$('cap').value=c;$('tag').value=t}scrollTo(0,0)};
+  x.textContent='Hapus';x.className='s';x.onclick=()=>{H.splice(i,1);sv();rh()};
+  dt.append(ru,x);h.append(dt)})}
+$('rs').onclick=()=>{parts=[];file=null;$('f').value='';$('fn').textContent='Pilih video…';$('info').textContent='';$('st').textContent='';$('out').innerHTML='';$('all').hidden=true;$('go').disabled=true;$('m').value='d';$('v').value=10;$('cap').value='Part {n}/{total}';$('tag').value=''};
+$('hc').onclick=()=>{const b=$('hc');if(b.dataset.s){clearTimeout(hcT);delete b.dataset.s;b.textContent='Hapus semua';H=[];sv();rh();return}b.dataset.s=1;b.textContent='Yakin? Ketuk lagi';hcT=setTimeout(()=>{delete b.dataset.s;b.textContent='Hapus semua'},3000)};
+rh();
 </script></body></html>
