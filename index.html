@@ -18,8 +18,8 @@ button{font:inherit;border:0;border-radius:10px;padding:10px 16px;cursor:pointer
 .s{background:var(--cd);color:var(--fg);border:1px solid var(--bd)}
 #go,#all{width:100%}
 #st{margin:12px 0}
-.r{display:flex;gap:8px;align-items:center;background:var(--cd);border-radius:12px;padding:10px 12px;margin-top:8px}
-.r div{flex:1;min-width:0}
+.r{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--cd);border-radius:12px;padding:10px 12px;margin-top:8px}
+.r>div:first-child{flex:1 1 120px;min-width:0}.c{display:flex;gap:8px;flex:1 1 100%}textarea,input[type=text]{font:inherit;padding:8px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--fg);min-width:0;width:100%;box-sizing:border-box}.c textarea{flex:1;resize:vertical}
 #all{margin-top:12px}
 </style></head><body><main>
 <h1>✂️ Pemotong Video Otomatis</h1>
@@ -27,6 +27,8 @@ button{font:inherit;border:0;border-radius:10px;padding:10px 16px;cursor:pointer
 <label class="drop"><input id="f" type="file" accept="video/*"><span id="fn">Pilih video…</span></label>
 <div id="info" class="mu"></div>
 <div class="row"><select id="m"><option value="d">Durasi per part (menit)</option><option value="n">Jumlah part</option></select><input id="v" type="number" value="10" min="1" step="any"></div>
+<input id="cap" type="text" value="Part {n}/{total}" placeholder="Caption, mis. Judul Film - Part {n}/{total}"><div class="mu" style="margin:4px 0 8px">{n} = nomor part, {total} = jumlah part</div>
+<input id="tag" type="text" placeholder="Tagar, mis. #film #fyp #viral" style="margin-bottom:12px">
 <button id="go" class="b" disabled>Potong otomatis</button>
 <div id="st" class="mu"></div><div id="out"></div>
 <button id="all" class="b" hidden>Simpan semua</button>
@@ -108,13 +110,16 @@ function mkPart(PS){
 async function save(n,b){
  try{const c=await window.claude?.use?.('downloads');if(c){await c.save({filename:n,data:b});return}}catch(e){if(e&&e.code=='declined')return}
  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;a.click()}
-function add(j,nm,b,t0,t1){
+function add(j,nm,b,t0,t1,cp){
  const r=document.createElement('div');r.className='r';
  r.innerHTML=`<div><b>Part ${j+1}</b><br><span class="mu">${fmt(t0)}–${fmt(t1)} · ${(b.size/1e6).toFixed(1)} MB</span></div>`;
  const p=document.createElement('button');p.textContent='Putar';p.className='s';
  p.onclick=()=>{const vd=document.createElement('video');vd.controls=true;vd.playsInline=true;vd.src=URL.createObjectURL(b);vd.style.cssText='width:100%;margin-top:8px;border-radius:10px';r.after(vd);vd.play().catch(()=>{});p.remove()};
  const s=document.createElement('button');s.textContent='Simpan';s.className='b';s.onclick=()=>save(nm,b);
- r.append(p,s);$('out').append(r)}
+ const c=document.createElement('div'),ta=document.createElement('textarea'),cb=document.createElement('button');
+ c.className='c';ta.value=cp;ta.rows=2;cb.textContent='Salin';cb.className='s';
+ cb.onclick=async()=>{try{await navigator.clipboard.writeText(ta.value)}catch(e){ta.select();document.execCommand('copy')}cb.textContent='Tersalin ✓';setTimeout(()=>cb.textContent='Salin',1500)};
+ c.append(ta,cb);r.append(p,s,c);$('out').append(r)}
 $('m').onchange=()=>$('v').value=$('m').value=='d'?10:5;
 $('f').onchange=async e=>{
  const f=e.target.files[0];if(!f)return;
@@ -130,7 +135,7 @@ $('go').onclick=async()=>{
   for(let j=0;j<N;j++){
    $('st').textContent=`Membuat part ${j+1}/${N}…`;await new Promise(r=>setTimeout(r));
    const b=mkPart(slices(c,j)),nm=file.name.replace(/\.[^.]+$/,'')+'_part'+String(j+1).padStart(2,'0')+'.mp4';
-   parts.push([nm,b]);add(j,nm,b,V.dts[c[j]]/V.ts,V.dts[c[j+1]]/V.ts)}
+   parts.push([nm,b]);add(j,nm,b,V.dts[c[j]]/V.ts,V.dts[c[j+1]]/V.ts,[$('cap').value.split('{n}').join(j+1).split('{total}').join(N),$('tag').value].map(x=>x.trim()).filter(Boolean).join(String.fromCharCode(10)))}
   $('st').textContent=`Selesai: ${N} part.`;$('all').hidden=false}
  catch(x){$('st').textContent='Gagal memotong video ini: '+(x&&x.message||'struktur file tidak didukung')}
  $('go').disabled=false};
