@@ -29,13 +29,14 @@ button{font:inherit;border:0;border-radius:10px;padding:10px 16px;cursor:pointer
 <div class="row"><select id="m"><option value="d">Durasi per part (menit)</option><option value="n">Jumlah part</option></select><input id="v" type="number" value="10" min="1" step="any"></div>
 <input id="cap" type="text" value="Part {n}/{total}" placeholder="Caption, mis. Judul Film - Part {n}/{total}"><div class="mu" style="margin:4px 0 8px">{n} = nomor part, {total} = jumlah part</div>
 <input id="tag" type="text" placeholder="Tagar, mis. #film #fyp #viral" style="margin-bottom:12px">
+<label class="mu" style="display:flex;gap:8px;align-items:flex-start;margin:0 0 12px"><input id="sv" type="checkbox" style="margin-top:5px"><span>Simpan part ke riwayat (memakai ruang penyimpanan browser sebesar ukuran part)</span></label>
 <div class="g"><button id="go" class="b" disabled>Potong otomatis</button><button id="rs" class="s">Reset</button></div>
 <div id="st" class="mu"></div><div id="out"></div>
 <button id="all" class="b" hidden>Simpan semua</button>
 <p class="mu">Pemotongan dilakukan di titik keyframe, jadi durasi tiap part bisa meleset beberapa detik dari target.</p>
 <h2 style="font-size:1.1rem;margin:24px 0 4px;display:flex;justify-content:space-between;align-items:center">Riwayat <button id="hc" class="s" style="font-size:.85rem;padding:6px 10px" hidden>Hapus semua</button></h2>
 <div id="hist" class="mu"></div>
-<p class="mu">Riwayat hanya berisi catatan (nama video, waktu, durasi, caption) dan tersimpan di browser ini, bukan file videonya.</p>
+<p class="mu">Riwayat tersimpan di browser ini. File video part hanya ikut tersimpan kalau opsi Simpan part ke riwayat dicentang saat memotong, dan bisa hilang kalau browser membersihkan data.</p>
 </main>
 <script>
 const $=i=>document.getElementById(i);
@@ -134,13 +135,14 @@ $('go').onclick=async()=>{
  const P=Math.max(1,m=='d'?v*60:tot/Math.min(Math.round(v)||1,500));
  $('go').disabled=true;$('out').innerHTML='';$('all').hidden=true;parts=[];$('rs').disabled=true;
  try{
-  const c=plan(P),N=c.length-1,hp=[];
+  const c=plan(P),N=c.length-1,hp=[],id=Date.now();let ok=$('sv').checked;if(ok)try{navigator.storage.persist()}catch(e){}
   for(let j=0;j<N;j++){
    $('st').textContent=`Membuat part ${j+1}/${N}…`;await new Promise(r=>setTimeout(r));
    const b=mkPart(slices(c,j)),nm=file.name.replace(/\.[^.]+$/,'')+'_part'+String(j+1).padStart(2,'0')+'.mp4';
    const t0=V.dts[c[j]]/V.ts,t1=V.dts[c[j+1]]/V.ts,cp=[$('cap').value.split('{n}').join(j+1).split('{total}').join(N),$('tag').value].map(x=>x.trim()).filter(Boolean).join(String.fromCharCode(10));
-   parts.push([nm,b]);hp.push({n:'Part '+(j+1),a:t0,b:t1,z:(b.size/1e6).toFixed(1),c:cp});add(j,nm,b,t0,t1,cp)}
-  $('st').textContent=`Selesai: ${N} part.`;$('all').hidden=false;H.unshift({nm:file.name,at:Date.now(),s:[m,v,$('cap').value,$('tag').value],ps:hp});H.length=Math.min(H.length,50);sv();rh()}
+   parts.push([nm,b]);hp.push({n:'Part '+(j+1),a:t0,b:t1,z:(b.size/1e6).toFixed(1),c:cp,f:nm});add(j,nm,b,t0,t1,cp);
+   if(ok){$('st').textContent=`Menyimpan part ${j+1}/${N} ke riwayat…`;try{await tx('readwrite',s=>s.put(b,id+':'+j))}catch(x){ok=false;tx('readwrite',s=>{for(let k=0;k<=j;k++)s.delete(id+':'+k)}).catch(()=>{})}}}
+  $('st').textContent=`Selesai: ${N} part.`+($('sv').checked&&!ok?' Part tidak bisa disimpan ke riwayat (penyimpanan penuh atau tidak didukung).':'');$('all').hidden=false;H.unshift({nm:file.name,id,at:id,st:ok?1:0,s:[m,v,$('cap').value,$('tag').value],ps:hp});H.splice(50).forEach(dl);sv();rh()}
  catch(x){$('st').textContent='Gagal memotong video ini: '+(x&&x.message||'struktur file tidak didukung')}
  $('go').disabled=false;$('rs').disabled=false};
 $('all').onclick=async()=>{for(const[n,b]of parts)await save(n,b)};
@@ -153,13 +155,22 @@ function rh(){
  H.forEach((e,i)=>{
   const dt=document.createElement('details'),sm=document.createElement('summary');dt.className='h';
   sm.textContent=e.nm+' · '+e.ps.length+' part · '+new Date(e.at).toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'});dt.append(sm);
-  e.ps.forEach(p=>{const q=document.createElement('div');q.className='mu';q.style.whiteSpace='pre-wrap';q.textContent=p.n+' · '+fmt(p.a)+'–'+fmt(p.b)+' · '+p.z+' MB'+(p.c?NL+p.c:'');dt.append(q)});
+  e.ps.forEach(p=>{const q=document.createElement('div');q.className='mu';q.style.whiteSpace='pre-wrap';q.textContent=p.n+' · '+fmt(p.a)+'–'+fmt(p.b)+' · '+p.z+' MB'+(p.c?NL+p.c:'');dt.append(q);if(e.st)pb(dt,e,p)});
   const ru=document.createElement('button'),x=document.createElement('button');
   ru.textContent='Pakai ulang';ru.className='s';ru.style.marginRight='8px';
   ru.onclick=()=>{const[m,v,c,t]=e.s||[];if(m){$('m').value=m;$('v').value=v;$('cap').value=c;$('tag').value=t}scrollTo(0,0)};
-  x.textContent='Hapus';x.className='s';x.onclick=()=>{H.splice(i,1);sv();rh()};
+  x.textContent='Hapus';x.className='s';x.onclick=()=>{dl(e);H.splice(i,1);sv();rh()};
   dt.append(ru,x);h.append(dt)})}
 $('rs').onclick=()=>{parts=[];file=null;$('f').value='';$('fn').textContent='Pilih video…';$('info').textContent='';$('st').textContent='';$('out').innerHTML='';$('all').hidden=true;$('go').disabled=true;$('m').value='d';$('v').value=10;$('cap').value='Part {n}/{total}';$('tag').value=''};
-$('hc').onclick=()=>{const b=$('hc');if(b.dataset.s){clearTimeout(hcT);delete b.dataset.s;b.textContent='Hapus semua';H=[];sv();rh();return}b.dataset.s=1;b.textContent='Yakin? Ketuk lagi';hcT=setTimeout(()=>{delete b.dataset.s;b.textContent='Hapus semua'},3000)};
+const idb=()=>new Promise((ok,no)=>{const r=indexedDB.open('pv',1);r.onupgradeneeded=()=>r.result.createObjectStore('b');r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
+const tx=async(m,f)=>{const db=await idb();return new Promise((ok,no)=>{const t=db.transaction('b',m),q=f(t.objectStore('b'));t.oncomplete=()=>{db.close();ok(q&&q.result)};t.onerror=t.onabort=()=>{db.close();no(t.error)}})};
+const dl=e=>{if(e.st)tx('readwrite',s=>{e.ps.forEach((p,k)=>s.delete(e.id+':'+k))}).catch(()=>{})};
+function pb(dt,e,p){
+ const k=e.ps.indexOf(p),w=document.createElement('div'),a=document.createElement('button'),b=document.createElement('button'),g=async f=>{try{const r=await tx('readonly',s=>s.get(e.id+':'+k));if(!r)throw 0;f(r)}catch(x){a.textContent=b.textContent='File hilang'}};
+ a.textContent='Putar';b.textContent='Simpan';a.className=b.className='s';a.style.marginRight='8px';
+ a.onclick=()=>g(r=>{const v=document.createElement('video');v.controls=true;v.playsInline=true;v.src=URL.createObjectURL(r);v.style.cssText='width:100%;margin-top:8px;border-radius:10px';w.append(v);v.play().catch(()=>{});a.remove()});
+ b.onclick=()=>g(r=>save(p.f,r));
+ w.append(a,b);dt.append(w)}
+$('hc').onclick=()=>{const b=$('hc');if(b.dataset.s){clearTimeout(hcT);delete b.dataset.s;b.textContent='Hapus semua';tx('readwrite',s=>s.clear()).catch(()=>{});H=[];sv();rh();return}b.dataset.s=1;b.textContent='Yakin? Ketuk lagi';hcT=setTimeout(()=>{delete b.dataset.s;b.textContent='Hapus semua'},3000)};
 rh();
 </script></body></html>
